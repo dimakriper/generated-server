@@ -36,11 +36,43 @@
     </div>
 
     <div class="categories-grid">
-      <div v-for="category in categories" :key="category.id" 
-           class="category-card" :style="{ borderColor: category.color }">
-        <div class="category-name">{{ category.name }}</div>
-        <div class="category-color" :style="{ backgroundColor: category.color }"></div>
-      </div>
+      <CategoryItem
+        v-for="category in categories"
+        :key="category.id"
+        :category="category"
+        @edit="editCategory"
+        @delete="deleteCategory"
+      />
+    </div>
+
+    <div v-if="showEditForm" class="category-form">
+      <h3>Edit Category</h3>
+      <form @submit.prevent="handleUpdate">
+        <div class="form-group">
+          <label for="edit-name">Name</label>
+          <input 
+            id="edit-name"
+            v-model="editingCategory.name"
+            type="text"
+            required
+          >
+        </div>
+        
+        <div class="form-group">
+          <label for="edit-color">Color</label>
+          <input 
+            id="edit-color"
+            v-model="editingCategory.color"
+            type="color"
+            required
+          >
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Update</button>
+          <button type="button" @click="showEditForm = false" class="btn-secondary">Cancel</button>
+        </div>
+      </form>
     </div>
   </div>
 </template>
@@ -48,9 +80,13 @@
 <script>
 import { ref, onMounted } from 'vue';
 import { api } from '@/api/api';
+import CategoryItem from '@/components/CategoryItem.vue';
 
 export default {
   name: 'Categories',
+  components: {
+    CategoryItem
+  },
   setup() {
     const categories = ref([]);
     const showNewCategoryForm = ref(false);
@@ -58,6 +94,8 @@ export default {
       name: '',
       color: '#1976d2'
     });
+    const showEditForm = ref(false);
+    const editingCategory = ref(null);
 
     const fetchCategories = async () => {
       try {
@@ -82,13 +120,45 @@ export default {
       }
     };
 
+    const editCategory = (category) => {
+      editingCategory.value = { ...category };
+      showEditForm.value = true;
+    };
+
+    const handleUpdate = async () => {
+      try {
+        await api.updateCategory(editingCategory.value.id, editingCategory.value);
+        showEditForm.value = false;
+        editingCategory.value = null;
+        await fetchCategories();
+      } catch (error) {
+        console.error('Error updating category:', error);
+      }
+    };
+
+    const deleteCategory = async (id) => {
+      if (!confirm('Are you sure you want to delete this category?')) return;
+      
+      try {
+        await api.deleteCategory(id);
+        await fetchCategories();
+      } catch (error) {
+        console.error('Error deleting category:', error);
+      }
+    };
+
     onMounted(fetchCategories);
 
     return {
       categories,
       showNewCategoryForm,
       newCategory,
-      handleSubmit
+      showEditForm,
+      editingCategory,
+      handleSubmit,
+      editCategory,
+      handleUpdate,
+      deleteCategory
     };
   }
 };
@@ -161,26 +231,5 @@ export default {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 20px;
-}
-
-.category-card {
-  background: white;
-  padding: 15px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border-left: 4px solid;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.category-name {
-  font-weight: 500;
-}
-
-.category-color {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
 }
 </style>

@@ -10,86 +10,113 @@
       <form @submit.prevent="handleSubmit">
         <div class="form-group">
           <label for="description">Description</label>
-          <input 
+          <input
+            type="text"
             id="description"
             v-model="newTransaction.description"
-            type="text"
             required
-          >
+          />
         </div>
-        
         <div class="form-group">
           <label for="amount">Amount</label>
-          <input 
-            id="amount"
-            v-model.number="newTransaction.amount"
+          <input
             type="number"
-            step="0.01"
+            id="amount"
+            v-model="newTransaction.amount"
             required
-          >
+          />
         </div>
-
         <div class="form-group">
           <label for="type">Type</label>
-          <select 
-            id="type"
-            v-model="newTransaction.type"
-            required
-          >
-            <option value="INCOME">Income</option>
+          <select id="type" v-model="newTransaction.type" required>
             <option value="EXPENSE">Expense</option>
+            <option value="INCOME">Income</option>
           </select>
         </div>
-
         <div class="form-group">
-          <label for="category">Category</label>
-          <select 
-            id="category"
-            v-model="newTransaction.categoryId"
-          >
-            <option value="">No Category</option>
-            <option 
-              v-for="category in categories" 
-              :key="category.id"
-              :value="category.id"
-            >
+          <label for="categoryId">Category</label>
+          <select id="categoryId" v-model="newTransaction.categoryId" required>
+            <option v-for="category in categories" :key="category.id" :value="category.id">
               {{ category.name }}
             </option>
           </select>
         </div>
-
         <div class="form-group">
           <label for="date">Date</label>
-          <input 
+          <input
+            type="date"
             id="date"
             v-model="newTransaction.date"
-            type="date"
             required
-          >
+          />
         </div>
-
         <div class="form-actions">
           <button type="submit" class="btn-primary">Save</button>
-          <button type="button" @click="showNewTransactionForm = false" class="btn-secondary">Cancel</button>
+          <button @click="showNewTransactionForm = false" class="btn-secondary">Cancel</button>
         </div>
       </form>
     </div>
 
     <div class="transactions-list">
-      <div v-for="transaction in transactions" :key="transaction.id" class="transaction-item">
-        <div class="transaction-info">
-          <span class="description">{{ transaction.description }}</span>
-          <span :class="['amount', transaction.type.toLowerCase()]">
-            {{ formatCurrency(transaction.amount) }}
-          </span>
+      <TransactionItem
+        v-for="transaction in transactions"
+        :key="transaction.id"
+        :transaction="transaction"
+        @edit="editTransaction"
+        @delete="deleteTransaction"
+      />
+    </div>
+
+    <div v-if="showEditForm" class="transaction-form">
+      <h3>Edit Transaction</h3>
+      <form @submit.prevent="handleUpdate">
+        <div class="form-group">
+          <label for="edit-description">Description</label>
+          <input
+            type="text"
+            id="edit-description"
+            v-model="editingTransaction.description"
+            required
+          />
         </div>
-        <div class="transaction-meta">
-          <span class="date">{{ formatDate(transaction.date) }}</span>
-          <span v-if="transaction.category" class="category" :style="{ backgroundColor: transaction.category.color }">
-            {{ transaction.category.name }}
-          </span>
+        <div class="form-group">
+          <label for="edit-amount">Amount</label>
+          <input
+            type="number"
+            id="edit-amount"
+            v-model="editingTransaction.amount"
+            required
+          />
         </div>
-      </div>
+        <div class="form-group">
+          <label for="edit-type">Type</label>
+          <select id="edit-type" v-model="editingTransaction.type" required>
+            <option value="EXPENSE">Expense</option>
+            <option value="INCOME">Income</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="edit-categoryId">Category</label>
+          <select id="edit-categoryId" v-model="editingTransaction.categoryId" required>
+            <option v-for="category in categories" :key="category.id" :value="category.id">
+              {{ category.name }}
+            </option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="edit-date">Date</label>
+          <input
+            type="date"
+            id="edit-date"
+            v-model="editingTransaction.date"
+            required
+          />
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Update</button>
+          <button @click="showEditForm = false" class="btn-secondary">Cancel</button>
+        </div>
+      </form>
     </div>
   </div>
 </template>
@@ -97,9 +124,13 @@
 <script>
 import { ref, onMounted } from 'vue';
 import { api } from '@/api/api';
+import TransactionItem from '@/components/TransactionItem.vue';
 
 export default {
   name: 'Transactions',
+  components: {
+    TransactionItem
+  },
   setup() {
     const transactions = ref([]);
     const categories = ref([]);
@@ -111,6 +142,8 @@ export default {
       categoryId: '',
       date: new Date().toISOString().split('T')[0]
     });
+    const showEditForm = ref(false);
+    const editingTransaction = ref(null);
 
     const fetchTransactions = async () => {
       try {
@@ -147,6 +180,33 @@ export default {
       }
     };
 
+    const editTransaction = (transaction) => {
+      editingTransaction.value = { ...transaction };
+      showEditForm.value = true;
+    };
+
+    const handleUpdate = async () => {
+      try {
+        await api.updateTransaction(editingTransaction.value.id, editingTransaction.value);
+        showEditForm.value = false;
+        editingTransaction.value = null;
+        await fetchTransactions();
+      } catch (error) {
+        console.error('Error updating transaction:', error);
+      }
+    };
+
+    const deleteTransaction = async (id) => {
+      if (!confirm('Are you sure you want to delete this transaction?')) return;
+      
+      try {
+        await api.deleteTransaction(id);
+        await fetchTransactions();
+      } catch (error) {
+        console.error('Error deleting transaction:', error);
+      }
+    };
+
     const formatCurrency = (amount) => {
       return new Intl.NumberFormat('ru-RU', {
         style: 'currency',
@@ -168,7 +228,12 @@ export default {
       categories,
       showNewTransactionForm,
       newTransaction,
+      showEditForm,
+      editingTransaction,
       handleSubmit,
+      editTransaction,
+      handleUpdate,
+      deleteTransaction,
       formatCurrency,
       formatDate
     };
@@ -193,95 +258,9 @@ export default {
   margin-bottom: 20px;
 }
 
-.form-group {
-  margin-bottom: 15px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: 500;
-}
-
-.form-group input,
-.form-group select {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.form-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-.btn-primary,
-.btn-secondary {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.btn-primary {
-  background: #1976d2;
-  color: white;
-}
-
-.btn-secondary {
-  background: #e0e0e0;
-  color: #333;
-}
-
 .transactions-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.transaction-item {
-  background: white;
-  padding: 15px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.transaction-info {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.description {
-  font-weight: 500;
-}
-
-.amount {
-  font-weight: bold;
-}
-
-.amount.income {
-  color: #4caf50;
-}
-
-.amount.expense {
-  color: #f44336;
-}
-
-.transaction-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.9em;
-  color: #666;
-}
-
-.category {
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 0.8em;
-  color: white;
 }
 </style>

@@ -1,9 +1,9 @@
+
 package org.openapitools.api;
 
-import org.openapitools.dao.CategoryDAO;
 import org.openapitools.model.Category;
 import org.openapitools.model.CategoryRequest;
-import org.openapitools.model.Error;
+import org.openapitools.service.CategoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,106 +26,92 @@ import javax.annotation.Generated;
 public class CategoriesApiController implements CategoriesApi {
 
     private static final Logger log = LoggerFactory.getLogger(CategoriesApiController.class);
-    
+
     private final NativeWebRequest request;
+    private final CategoryService categoryService;
 
     @Autowired
-    public CategoriesApiController(NativeWebRequest request) {
+    public CategoriesApiController(NativeWebRequest request, CategoryService categoryService) {
         this.request = request;
-        log.info("CategoriesApiController initialized with CategoryDAO");
+        this.categoryService = categoryService;
+        log.info("CategoriesApiController initialized with CategoryService");
     }
 
     @Override
     public Optional<NativeWebRequest> getRequest() {
         return Optional.ofNullable(request);
     }
-    
+
     @Override
     public ResponseEntity<Category> createCategory(@Valid @RequestBody CategoryRequest categoryRequest) {
         log.debug("Creating new category: {}", categoryRequest);
-        
-        // Create a new category from the request
-        Category newCategory = new Category();
-        newCategory.setName(categoryRequest.getName());
-        newCategory.setColor(categoryRequest.getColor());
-        
-        // Use CategoryDAO to add the category
-        Category created = CategoryDAO.addCategory(newCategory);
-        
+
+        Category created = categoryService.createCategory(categoryRequest);
+
         log.info("Created category with ID: {}", created.getId());
-        
+
         // Return with 201 Created status
         return new ResponseEntity<>(created, HttpStatus.CREATED);
     }
-    
+
     @Override
     public ResponseEntity<Void> deleteCategory(@PathVariable("id") Long id) {
         log.debug("Deleting category with ID: {}", id);
-        
-        if (CategoryDAO.findById(id) == null) {
+
+        Optional<Category> categoryOpt = categoryService.findById(id);
+        if (!categoryOpt.isPresent()) {
             log.warn("Category not found with ID: {}", id);
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        
-        boolean deleted = CategoryDAO.deleteCategory(id);
+
+        boolean deleted = categoryService.deleteCategory(id);
         if (!deleted) {
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
-        
+
         log.info("Deleted category with ID: {}", id);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
-    
+
     @Override
     public ResponseEntity<List<Category>> getAllCategories() {
         log.debug("Getting all categories");
-        
-        List<Category> categories = CategoryDAO.getAllCategories();
+
+        List<Category> categories = categoryService.getAllCategories();
         log.info("Returning {} categories", categories.size());
-        
+
         return new ResponseEntity<>(categories, HttpStatus.OK);
     }
-    
+
     @Override
     public ResponseEntity<Category> getCategoryById(@PathVariable("id") Long id) {
         log.debug("Getting category with ID: {}", id);
-        
-        Category category = CategoryDAO.findById(id);
-        
-        if (category == null) {
+
+        Optional<Category> categoryOpt = categoryService.findById(id);
+
+        if (!categoryOpt.isPresent()) {
             log.warn("Category not found with ID: {}", id);
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        
+
         log.info("Found category with ID: {}", id);
-        return new ResponseEntity<>(category, HttpStatus.OK);
+        return new ResponseEntity<>(categoryOpt.get(), HttpStatus.OK);
     }
-    
+
     @Override
     public ResponseEntity<Category> updateCategory(
             @PathVariable("id") Long id,
             @Valid @RequestBody CategoryRequest categoryRequest) {
         log.debug("Updating category with ID: {}", id);
-        
-        Category existingCategory = CategoryDAO.findById(id);
-        
-        if (existingCategory == null) {
+
+        Optional<Category> updatedOpt = categoryService.updateCategory(id, categoryRequest);
+
+        if (!updatedOpt.isPresent()) {
             log.warn("Category not found with ID: {}", id);
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        
-        // Update the category properties
-        existingCategory.setName(categoryRequest.getName());
-        existingCategory.setColor(categoryRequest.getColor());
-        
-        // Use CategoryDAO to update the category
-        boolean updated = CategoryDAO.updateCategory(existingCategory);
-        
-        if (!updated) {
-            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-        
+
         log.info("Updated category with ID: {}", id);
-        return new ResponseEntity<>(existingCategory, HttpStatus.OK);
+        return new ResponseEntity<>(updatedOpt.get(), HttpStatus.OK);
     }
 }

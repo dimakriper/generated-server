@@ -1,11 +1,8 @@
 package org.openapitools.api;
 
-import org.openapitools.dao.CategoryDAO;
-import org.openapitools.dao.TransactionDAO;
-import org.openapitools.model.Category;
-import org.openapitools.model.Error;
 import org.openapitools.model.Transaction;
 import org.openapitools.model.TransactionRequest;
+import org.openapitools.service.TransactionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,124 +25,105 @@ import javax.annotation.Generated;
 public class TransactionsApiController implements TransactionsApi {
 
     private static final Logger log = LoggerFactory.getLogger(TransactionsApiController.class);
-    
+
     private final NativeWebRequest request;
+    private final TransactionService transactionService;
 
     @Autowired
-    public TransactionsApiController(NativeWebRequest request) {
+    public TransactionsApiController(NativeWebRequest request, TransactionService transactionService) {
         this.request = request;
-        log.info("TransactionsApiController initialized with TransactionDAO");
+        this.transactionService = transactionService;
+        log.info("TransactionsApiController initialized with TransactionService");
     }
 
     @Override
     public Optional<NativeWebRequest> getRequest() {
         return Optional.ofNullable(request);
     }
-    
+
     @Override
     public ResponseEntity<Transaction> createTransaction(@Valid @RequestBody TransactionRequest transactionRequest) {
         log.debug("Creating new transaction: {}", transactionRequest);
-        
-        // Create a new transaction from the request
-        Transaction newTransaction = new Transaction();
-        newTransaction.setDescription(transactionRequest.getDescription());
-        newTransaction.setAmount(transactionRequest.getAmount());
-        newTransaction.setDate(transactionRequest.getDate());
-        newTransaction.setType(transactionRequest.getType());
-        
-        // Set category if categoryId is provided
-        if (transactionRequest.getCategoryId() != null) {
-            Category category = CategoryDAO.findById(transactionRequest.getCategoryId());
-            newTransaction.setCategory(category);
+
+        try {
+            Transaction created = transactionService.createTransaction(transactionRequest);
+            log.info("Created transaction with ID: {}", created.getId());
+            return new ResponseEntity<>(created, HttpStatus.CREATED);
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid transaction request: {}", e.getMessage());
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        } catch (Exception e) {
+            log.error("Error creating transaction: {}", e.getMessage());
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
-        
-        // Add transaction to DAO
-        Transaction created = TransactionDAO.addTransaction(newTransaction);
-        
-        log.info("Created transaction with ID: {}", created.getId());
-        
-        // Return with 201 Created status
-        return new ResponseEntity<>(created, HttpStatus.CREATED);
     }
-    
+
     @Override
     public ResponseEntity<Void> deleteTransaction(@PathVariable("id") Long id) {
         log.debug("Deleting transaction with ID: {}", id);
-        
-        if (TransactionDAO.findById(id) == null) {
+
+        Optional<Transaction> transactionOpt = transactionService.findById(id);
+        if (!transactionOpt.isPresent()) {
             log.warn("Transaction not found with ID: {}", id);
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        
-        boolean deleted = TransactionDAO.deleteTransaction(id);
+
+        boolean deleted = transactionService.deleteTransaction(id);
         if (!deleted) {
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
-        
+
         log.info("Deleted transaction with ID: {}", id);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
-    
+
     @Override
     public ResponseEntity<List<Transaction>> getAllTransactions() {
         log.debug("Getting all transactions");
-        
-        List<Transaction> transactions = TransactionDAO.getAllTransactions();
+
+        List<Transaction> transactions = transactionService.getAllTransactions();
         log.info("Returning {} transactions", transactions.size());
-        
+
         return new ResponseEntity<>(transactions, HttpStatus.OK);
     }
-    
+
     @Override
     public ResponseEntity<Transaction> getTransactionById(@PathVariable("id") Long id) {
         log.debug("Getting transaction with ID: {}", id);
-        
-        Transaction transaction = TransactionDAO.findById(id);
-        
-        if (transaction == null) {
+
+        Optional<Transaction> transactionOpt = transactionService.findById(id);
+
+        if (!transactionOpt.isPresent()) {
             log.warn("Transaction not found with ID: {}", id);
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        
+
         log.info("Found transaction with ID: {}", id);
-        return new ResponseEntity<>(transaction, HttpStatus.OK);
+        return new ResponseEntity<>(transactionOpt.get(), HttpStatus.OK);
     }
-    
+
     @Override
     public ResponseEntity<Transaction> updateTransaction(
             @PathVariable("id") Long id,
             @Valid @RequestBody TransactionRequest transactionRequest) {
         log.debug("Updating transaction with ID: {}", id);
-        
-        Transaction existingTransaction = TransactionDAO.findById(id);
-        
-        if (existingTransaction == null) {
-            log.warn("Transaction not found with ID: {}", id);
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        }
-        
-        // Update the transaction properties
-        existingTransaction.setDescription(transactionRequest.getDescription());
-        existingTransaction.setAmount(transactionRequest.getAmount());
-        existingTransaction.setDate(transactionRequest.getDate());
-        existingTransaction.setType(transactionRequest.getType());
-        
-        // Update category if categoryId is provided
-        if (transactionRequest.getCategoryId() != null) {
-            Category category = CategoryDAO.findById(transactionRequest.getCategoryId());
-            existingTransaction.setCategory(category);
-        } else {
-            existingTransaction.setCategory(null);
-        }
-        
-        // Update the transaction in the DAO
-        boolean updated = TransactionDAO.updateTransaction(existingTransaction);
-        
-        if (!updated) {
+
+        try {
+            Optional<Transaction> updatedOpt = transactionService.updateTransaction(id, transactionRequest);
+            
+            if (!updatedOpt.isPresent()) {
+                log.warn("Transaction not found with ID: {}", id);
+                return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            }
+
+            log.info("Updated transaction with ID: {}", id);
+            return new ResponseEntity<>(updatedOpt.get(), HttpStatus.OK);
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid transaction request for ID {}: {}", id, e.getMessage());
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        } catch (Exception e) {
+            log.error("Error updating transaction with ID {}: {}", id, e.getMessage());
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
-        
-        log.info("Updated transaction with ID: {}", id);
-        return new ResponseEntity<>(existingTransaction, HttpStatus.OK);
     }
 }
